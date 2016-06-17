@@ -1,18 +1,18 @@
 from keras.layers import Input, Dense
 from keras.models import Model
+from dataacq import getset
 from custom_noise import salt_and_pepper_custom
 # this is the size of our encoded representations
 encoding_dim = 32  # 32 floats -> compression of factor 24.5, assuming the input is 784 floats
 
-input_img = Input(shape=(784,))
-encoded = Dense(128, activation='relu')(input_img)
-encoded = Dense(64, activation='relu')(encoded)
-encoded = Dense(32, activation='relu')(encoded)
+input_img = Input(shape=(28900,))
+encoded = Dense(4800, activation='relu')(input_img)
+encoded = Dense(2400, activation='relu')(encoded)
+encoded = Dense(1200, activation='relu')(encoded)
 
-decoded = Dense(64, activation='relu')(encoded)
-decoded = Dense(128, activation='relu')(decoded)
-decoded = Dense(784, activation='sigmoid')(decoded)
-
+decoded = Dense(2400, activation='relu')(encoded)
+decoded = Dense(4800, activation='relu')(decoded)
+decoded = Dense(28900, activation='sigmoid')(decoded)
 
 autoencoder = Model(input=input_img, output=decoded)
 autoencoder.compile(optimizer='adadelta', loss='binary_crossentropy')
@@ -21,6 +21,12 @@ autoencoder.compile(optimizer='adadelta', loss='binary_crossentropy')
 from keras.datasets import mnist
 import numpy as np
 import random
+
+x_train = getset('data/Train/Frontalized')
+x_test = getset('data/Test/Frontalized')
+x_train_noisy = getset('data/Train/Posed')
+x_test_noisy = getset('data/Test/Posed')
+"""
 (x_train, _), (x_test, _) = mnist.load_data()
 
 x_train = x_train.astype('float32') / 255.
@@ -37,10 +43,11 @@ x_test_noisy = np.clip(x_test_noisy, 0., 1.)
 
 x_train_noisy = np.reshape(x_train_noisy, (len(x_train_noisy), 784))
 x_test_noisy = np.reshape(x_test_noisy, (len(x_test_noisy), 784))
+"""
 
 autoencoder.fit(x_train_noisy, x_train,
-                nb_epoch=350,
-                batch_size=100,
+                nb_epoch=150,
+                batch_size=10,
                 shuffle=True,
                 validation_data=(x_test_noisy, x_test))
 
@@ -56,14 +63,14 @@ plt.figure(figsize=(20, 4))
 for i in range(1, n+1):
     # display original
     ax = plt.subplot(2, n, i)
-    plt.imshow(x_test_noisy[i].reshape(28, 28))
+    plt.imshow(x_test_noisy[i].reshape(170, 170))
     plt.gray()
     ax.get_xaxis().set_visible(False)
     ax.get_yaxis().set_visible(False)
 
     # display reconstruction
     ax = plt.subplot(2, n, i + n)
-    plt.imshow(decoded_imgs[i].reshape(28, 28))
+    plt.imshow(decoded_imgs[i].reshape(170, 170))
     plt.gray()
     ax.get_xaxis().set_visible(False)
     ax.get_yaxis().set_visible(False)
