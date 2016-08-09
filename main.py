@@ -1,106 +1,68 @@
 from keras.layers import Input, Dense
 from keras.models import Model
-from custom_noise import salt_and_pepper_custom
-# this is the size of our encoded representations
+import numpy as np
+from keras import callbacks
 encoding_dim = 32  # 32 floats -> compression of factor 24.5, assuming the input is 784 floats
+remote = callbacks.RemoteMonitor(root='http://localhost:9000')
 
-input_img = Input(shape=(784,))
-encoded = Dense(128, activation='relu')(input_img)
-encoded = Dense(64, activation='relu')(encoded)
-encoded = Dense(32, activation='relu')(encoded)
+input_img = Input(shape=(5200,))
+encoded = Dense(4600, activation='relu')(input_img)
+encoded = Dense(3200, activation='relu')(encoded)
+encoded = Dense(2600, activation='relu')(encoded)
 
-decoded = Dense(64, activation='relu')(encoded)
-decoded = Dense(128, activation='relu')(decoded)
-decoded = Dense(784, activation='sigmoid')(decoded)
-
+decoded = Dense(3200, activation='relu')(encoded)
+decoded = Dense(4600, activation='relu')(decoded)
+decoded = Dense(5200, activation='sigmoid')(decoded)
 
 autoencoder = Model(input=input_img, output=decoded)
 autoencoder.compile(optimizer='adadelta', loss='binary_crossentropy')
 
+data_org = np.load('peporg_np.npy')
+data_occ = np.load('pepimgs_np.npy')
 
-from keras.datasets import mnist
-import numpy as np
-import random
-(x_train, _), (x_test, _) = mnist.load_data()
+train_org=data_org[0:10000,:]
+train_occ=data_occ[0:10000,:]
+test_org=data_org[10000:12500,:]
+test_occ=data_occ[10000:12500,:]
+val_org=data_org[12500:15000,:]
+val_occ=data_occ[12500:15000,:]
 
-x_train = x_train.astype('float32') / 255.
-x_test = x_test.astype('float32') / 255.
+"""
+train_org=data_org[0:10,:]
+train_occ=data_occ[0:10,:]
+test_org=data_org[10:20,:]
+test_occ=data_occ[10:20,:]
+val_org=data_org[20:30,:]
+val_occ=data_occ[20:30,:]
+"""
 
-x_train_noisy = salt_and_pepper_custom(x_train)
-x_test_noisy = salt_and_pepper_custom(x_test)
-
-x_train = x_train.reshape((len(x_train), np.prod(x_train.shape[1:])))
-x_test = x_test.reshape((len(x_test), np.prod(x_test.shape[1:])))
-
-x_train_noisy = np.clip(x_train_noisy, 0., 1.)
-x_test_noisy = np.clip(x_test_noisy, 0., 1.)
-
-x_train_noisy = np.reshape(x_train_noisy, (len(x_train_noisy), 784))
-x_test_noisy = np.reshape(x_test_noisy, (len(x_test_noisy), 784))
-
-autoencoder.fit(x_train_noisy, x_train,
-                nb_epoch=350,
-                batch_size=100,
+autoencoder.fit(train_occ, train_org,
+                nb_epoch=150,
+                batch_size=10,
                 shuffle=True,
-                validation_data=(x_test_noisy, x_test))
-
+                validation_data=(val_occ, val_org),callbacks=[remote])
+autoencoder.save_weights('pep_model.h5')
 # encode and decode some digits
 # note that we take them from the *test* set
 
-decoded_imgs = autoencoder.predict(x_test_noisy)
+decoded_imgs = autoencoder.predict(test_occ)
 # use Matplotlib (don't ask)
 import matplotlib.pyplot as plt
 
-n = 10  # how many digits we will display
+n = 5  # how many digits we will display
 plt.figure(figsize=(20, 4))
 for i in range(1, n+1):
     # display original
     ax = plt.subplot(2, n, i)
-    plt.imshow(x_test_noisy[i].reshape(28, 28))
+    plt.imshow(test_occ[i].reshape(40, 130))
     plt.gray()
     ax.get_xaxis().set_visible(False)
     ax.get_yaxis().set_visible(False)
 
     # display reconstruction
     ax = plt.subplot(2, n, i + n)
-    plt.imshow(decoded_imgs[i].reshape(28, 28))
+    plt.imshow(decoded_imgs[i].reshape(40, 130))
     plt.gray()
     ax.get_xaxis().set_visible(False)
     ax.get_yaxis().set_visible(False)
 plt.show()
-
-"""
-#noise generation alternative
-#train
-saltarr = np.ones((28, 28)) #ones
-saltarr2 = np.zeros((28, 28)) #zeros
-#test
-saltarr_te = np.ones((28, 28)) #ones
-saltarr2_te = np.zeros((28, 28)) #zeros
-dim = 28
-pixs = 5
-range_lim = 1 #white
-range_lim2 = 0 #black
-
-rdarray_x = random.sample(range(0, dim - pixs), range_lim)
-rdarray_x2 = random.sample(range(10, 20), range_lim)
-
-rdarray_x_te = random.sample(range(0, dim - pixs), range_lim)
-rdarray_x2_te = random.sample(range(10, 20), range_lim)
-
-for x in range(0, range_lim):
-    saltarr[rdarray_x[x]:rdarray_x[x] + pixs, rdarray_x2[x]:rdarray_x2[x] + pixs] = 0  # 0
-for y in range(0, range_lim):
-    saltarr2[rdarray_x[y]:rdarray_x[y] + pixs, rdarray_x2[y]:rdarray_x2[y] + pixs] = 1  # 1
-
-for x in range(0, range_lim):
-    saltarr_te[rdarray_x_te[x]:rdarray_x_te[x] + pixs, rdarray_x2_te[x]:rdarray_x2_te[x] + pixs] = 0  # 0
-for y in range(0, range_lim):
-    saltarr2_te[rdarray_x_te[y]:rdarray_x_te[y] + pixs, rdarray_x2_te[y]:rdarray_x2_te[y] + pixs] = 1  # 1
-
-saltzero = np.logical_not(saltarr) * saltarr2
-saltzero_te = np.logical_not(saltarr_te) * saltarr2_te
-#noise_factor = 0.5
-x_train_noisy = x_train2 * saltarr + saltzero
-x_test_noisy = x_test2 * saltarr + saltzero
-"""
